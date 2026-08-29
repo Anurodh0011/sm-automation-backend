@@ -1,0 +1,160 @@
+// Initial schema for AI-powered Social Media Content Management SaaS
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ContentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ARCHIVED
+}
+
+enum ContentType {
+  POST
+  CAPTION
+  THREAD
+  ARTICLE
+  SHORT_FORM
+}
+
+enum TargetPlatform {
+  GENERAL
+  LINKEDIN
+  TWITTER
+  INSTAGRAM
+  FACEBOOK
+}
+
+enum AiProvider {
+  OPENAI
+  GEMINI
+  CLAUDE
+  MOCK
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  memberships        OrganizationMembership[]
+  createdContents    Content[]                @relation("UserCreatedContents")
+  contentGenerations ContentGeneration[]
+
+  @@map("users")
+}
+
+model Organization {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String   @unique
+  creditsRemaining Int      @default(1000) @map("credits_remaining")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  memberships OrganizationMembership[]
+  workspaces  Workspace[]
+
+  @@map("organizations")
+}
+
+model OrganizationMembership {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  role           Role     @default(MEMBER)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("organization_memberships")
+}
+
+model Workspace {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  description    String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contents           Content[]
+  contentGenerations ContentGeneration[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("workspaces")
+}
+
+model Content {
+  id                 String         @id @default(uuid()) @db.Uuid
+  workspaceId        String         @map("workspace_id") @db.Uuid
+  createdById        String         @map("created_by_id") @db.Uuid
+  title              String
+  body               String         @db.Text
+  contentType        ContentType    @default(POST) @map("content_type")
+  platform           TargetPlatform @default(GENERAL)
+  tone               String?
+  status             ContentStatus  @default(DRAFT)
+  generationMetadata Json?          @map("generation_metadata")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User                @relation("UserCreatedContents", fields: [createdById], references: [id], onDelete: Restrict)
+  generations ContentGeneration[]
+
+  @@index([workspaceId])
+  @@index([createdById])
+  @@index([status])
+  @@index([platform])
+  @@map("contents")
+}
+
+model ContentGeneration {
+  id           String     @id @default(uuid()) @db.Uuid
+  workspaceId  String     @map("workspace_id") @db.Uuid
+  createdById  String     @map("created_by_id") @db.Uuid
+  contentId    String?    @map("content_id") @db.Uuid
+  prompt       String     @db.Text
+  systemPrompt String?    @map("system_prompt") @db.Text
+  provider     AiProvider @default(OPENAI)
+  model        String
+  inputTokens  Int        @default(0) @map("input_tokens")
+  outputTokens Int        @default(0) @map("output_tokens")
+  totalTokens  Int        @default(0) @map("total_tokens")
+  rawResponse  Json?      @map("raw_response")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  content   Content?  @relation(fields: [contentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([contentId])
+  @@index([createdById])
+  @@map("content_generations")
+}
