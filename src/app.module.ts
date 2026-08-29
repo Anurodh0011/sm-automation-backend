@@ -1,9 +1,10 @@
 import { Module } from "@nestjs/common";
-import { ConfigModule } from "@nestjs/config";
+import { ConfigModule, ConfigService } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
-
 import { validateEnv } from "./config/env.config";
 import { PrismaModule } from "./prisma/prisma.module";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
@@ -21,6 +22,22 @@ import { UsageModule } from "./modules/usage/usage.module";
       isGlobal: true,
       validate: validateEnv,
     }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => [
+        {
+          name: "default",
+          ttl: (configService.get<number>("THROTTLE_TTL") ?? 60) * 1000,
+          limit: configService.get<number>("THROTTLE_LIMIT") ?? 100,
+        },
+        {
+          name: "auth",
+          ttl: (configService.get<number>("THROTTLE_TTL") ?? 60) * 1000,
+          limit: configService.get<number>("AUTH_THROTTLE_LIMIT") ?? 5,
+        },
+      ],
+    }),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -36,6 +53,10 @@ import { UsageModule } from "./modules/usage/usage.module";
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

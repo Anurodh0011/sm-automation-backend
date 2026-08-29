@@ -10,6 +10,12 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().default("15m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
+  CORS_ALLOWED_ORIGINS: z
+    .string()
+    .default("http://localhost:3000,http://localhost:3001"),
+  THROTTLE_TTL: z.coerce.number().default(60),
+  THROTTLE_LIMIT: z.coerce.number().default(100),
+  AUTH_THROTTLE_LIMIT: z.coerce.number().default(5),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
