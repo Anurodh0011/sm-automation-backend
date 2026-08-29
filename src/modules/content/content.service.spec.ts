@@ -1,6 +1,7 @@
 import { ContentService } from "./content.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AiEngineService } from "../ai-engine/ai-engine.service";
+import { UsageService } from "../usage/usage.service";
 import { ContentStatus, ContentType, TargetPlatform } from "@prisma/client";
 import { GenerateContentDto } from "./dto/generate-content.dto";
 import { UpdateContentDto } from "./dto/update-content.dto";
@@ -20,6 +21,7 @@ describe("ContentService (Editing & Regeneration)", () => {
     $transaction: jest.Mock;
   };
   let mockAiEngineService: { generateContent: jest.Mock };
+  let mockUsageService: { recordUsage: jest.Mock };
 
   beforeEach(() => {
     mockPrismaService = {
@@ -45,9 +47,14 @@ describe("ContentService (Editing & Regeneration)", () => {
       generateContent: jest.fn(),
     };
 
+    mockUsageService = {
+      recordUsage: jest.fn().mockResolvedValue({ id: "usg-1" }),
+    };
+
     contentService = new ContentService(
       mockPrismaService as unknown as PrismaService,
       mockAiEngineService as unknown as AiEngineService,
+      mockUsageService as unknown as UsageService,
     );
   });
 
@@ -58,7 +65,7 @@ describe("ContentService (Editing & Regeneration)", () => {
     tone: "Professional",
   };
 
-  it("should generate initial content and store generation history", async () => {
+  it("should generate initial content, store generation history, and record AI usage", async () => {
     const mockWorkspace = {
       id: "ws-1",
       organizationId: "org-1",
@@ -82,7 +89,7 @@ describe("ContentService (Editing & Regeneration)", () => {
       contentType: ContentType.POST,
       platform: TargetPlatform.LINKEDIN,
       tone: "Professional",
-      status: ContentStatus.DRAFT,
+      status: ContentStatus.GENERATED,
     };
 
     const mockGeneration = {
@@ -111,6 +118,14 @@ describe("ContentService (Editing & Regeneration)", () => {
     expect(mockAiEngineService.generateContent).toHaveBeenCalled();
     expect(mockPrismaService.content.create).toHaveBeenCalled();
     expect(mockPrismaService.contentGeneration.create).toHaveBeenCalled();
+    expect(mockUsageService.recordUsage).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      userId: "usr-1",
+      contentGenerationId: "gen-1",
+      provider: "MOCK",
+      model: "mock-v1",
+      totalTokens: 150,
+    });
     expect(result.content.id).toBe("cnt-1");
   });
 
@@ -145,7 +160,7 @@ describe("ContentService (Editing & Regeneration)", () => {
     expect(updated.body).toBe("Manually edited copy");
   });
 
-  it("should append a new ContentGeneration record when regenerating content", async () => {
+  it("should append a new ContentGeneration record and record usage when regenerating content", async () => {
     const existingContent = {
       id: "cnt-1",
       workspaceId: "ws-1",
@@ -196,6 +211,7 @@ describe("ContentService (Editing & Regeneration)", () => {
     expect(mockAiEngineService.generateContent).toHaveBeenCalled();
     expect(mockPrismaService.contentGeneration.create).toHaveBeenCalled();
     expect(mockPrismaService.content.update).toHaveBeenCalled();
+    expect(mockUsageService.recordUsage).toHaveBeenCalled();
     expect(result.content.body).toBe("Regenerated LinkedIn Post Version 2");
   });
 });

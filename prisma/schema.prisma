@@ -57,6 +57,7 @@ model User {
   memberships        OrganizationMembership[]
   createdContents    Content[]                @relation("UserCreatedContents")
   contentGenerations ContentGeneration[]
+  aiUsageLogs        AiUsageLog[]
 
   @@map("users")
 }
@@ -71,6 +72,7 @@ model Organization {
 
   memberships OrganizationMembership[]
   workspaces  Workspace[]
+  aiUsageLogs AiUsageLog[]
 
   @@map("organizations")
 }
@@ -150,12 +152,37 @@ model ContentGeneration {
   rawResponse  Json?      @map("raw_response")
   createdAt    DateTime   @default(now()) @map("created_at")
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  content   Content?  @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  content     Content?     @relation(fields: [contentId], references: [id], onDelete: SetNull)
+  aiUsageLogs AiUsageLog[]
 
   @@index([workspaceId])
   @@index([contentId])
   @@index([createdById])
   @@map("content_generations")
+}
+
+model AiUsageLog {
+  id                  String     @id @default(uuid()) @db.Uuid
+  organizationId      String     @map("organization_id") @db.Uuid
+  userId              String     @map("user_id") @db.Uuid
+  contentGenerationId String?    @map("content_generation_id") @db.Uuid
+  provider            AiProvider @default(OPENAI)
+  model               String
+  promptTokens        Int        @default(0) @map("prompt_tokens")
+  completionTokens    Int        @default(0) @map("completion_tokens")
+  totalTokens         Int        @default(0) @map("total_tokens")
+  creditsDeducted     Int        @default(1) @map("credits_deducted")
+  estimatedCostUsd    Decimal    @default(0) @map("estimated_cost_usd") @db.Decimal(10, 6)
+  createdAt           DateTime   @default(now()) @map("created_at")
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  contentGeneration ContentGeneration? @relation(fields: [contentGenerationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("ai_usage_logs")
 }

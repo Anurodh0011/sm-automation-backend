@@ -6,6 +6,7 @@ import {
 import { AiProvider, ContentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AiEngineService } from "../ai-engine/ai-engine.service";
+import { UsageService } from "../usage/usage.service";
 import { GenerateContentDto } from "./dto/generate-content.dto";
 import { CreateContentDto } from "./dto/create-content.dto";
 import { UpdateContentDto } from "./dto/update-content.dto";
@@ -18,6 +19,7 @@ export class ContentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiEngineService: AiEngineService,
+    private readonly usageService: UsageService,
   ) {}
 
   async generateContent(
@@ -61,8 +63,8 @@ export class ContentService {
 
     const mappedProvider = this.mapProviderEnum(aiResult.provider);
 
-    // 4. Persist Generation and Content in a database transaction
-    return this.prisma.$transaction(async (tx) => {
+    // 4. Persist Generation, Content, and Usage Tracking in a database transaction
+    const result = await this.prisma.$transaction(async (tx) => {
       // Create Content record with GENERATED status
       const content = await tx.content.create({
         data: {
@@ -104,6 +106,18 @@ export class ContentService {
         generation,
       };
     });
+
+    // 5. Record Usage Log and deduct organization credits
+    await this.usageService.recordUsage({
+      organizationId: activeOrgId,
+      userId,
+      contentGenerationId: result.generation.id,
+      provider: mappedProvider,
+      model: aiResult.model,
+      totalTokens: aiResult.tokensUsed || 0,
+    });
+
+    return result;
   }
 
   async regenerateContent(
@@ -143,7 +157,7 @@ export class ContentService {
 
     const mappedProvider = this.mapProviderEnum(aiResult.provider);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Append new generation to ContentGeneration history log
       const generation = await tx.contentGeneration.create({
         data: {
@@ -195,6 +209,18 @@ export class ContentService {
         generation,
       };
     });
+
+    // Record Usage Log and deduct organization credits
+    await this.usageService.recordUsage({
+      organizationId: activeOrgId,
+      userId,
+      contentGenerationId: result.generation.id,
+      provider: mappedProvider,
+      model: aiResult.model,
+      totalTokens: aiResult.tokensUsed || 0,
+    });
+
+    return result;
   }
 
   async updateContent(
