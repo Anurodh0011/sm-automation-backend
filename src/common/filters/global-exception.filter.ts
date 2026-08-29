@@ -6,8 +6,9 @@ import {
   HttpStatus,
   Logger,
 } from "@nestjs/common";
-import { Request, Response } from "express";
+import { Response } from "express";
 import { Prisma } from "@prisma/client";
+import { RequestWithId } from "../middleware/request-id.middleware";
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -16,7 +17,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+    const request = ctx.getRequest<RequestWithId>();
+
+    const requestId =
+      request.requestId || (request.headers["x-request-id"] as string) || "N/A";
 
     let statusCode: number = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = "An unexpected internal server error occurred";
@@ -81,7 +85,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // 3. Unexpected Runtime Errors
     else if (exception instanceof Error) {
       this.logger.error(
-        `[Unhandled Exception] ${exception.message}`,
+        `[${requestId}] [Unhandled Exception] ${exception.message}`,
         exception.stack,
       );
       message = isProduction
@@ -89,10 +93,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         : exception.message;
     }
 
-    // Log internal server errors (500s)
+    // Log internal server errors (500s) with requestId context
     if (statusCode >= 500) {
       this.logger.error(
-        `HTTP ${statusCode} ${request.method} ${request.url} - ${message}`,
+        `[${requestId}] HTTP ${statusCode} ${request.method} ${request.url} - ${message}`,
         exception instanceof Error ? exception.stack : undefined,
       );
     }
@@ -102,6 +106,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       statusCode,
       message,
       error: errorCode,
+      requestId,
       timestamp: new Date().toISOString(),
       path: request.url,
       ...(details !== undefined ? { details } : {}),
