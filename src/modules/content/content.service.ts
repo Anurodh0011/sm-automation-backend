@@ -10,6 +10,8 @@ import { GenerateContentDto } from "./dto/generate-content.dto";
 import { CreateContentDto } from "./dto/create-content.dto";
 import { UpdateContentDto } from "./dto/update-content.dto";
 import { RegenerateContentDto } from "./dto/regenerate-content.dto";
+import { ChangeContentStatusDto } from "./dto/change-content-status.dto";
+import { ContentStatusMachine } from "./domain/content-status-machine";
 
 @Injectable()
 export class ContentService {
@@ -61,7 +63,7 @@ export class ContentService {
 
     // 4. Persist Generation and Content in a database transaction
     return this.prisma.$transaction(async (tx) => {
-      // Create Content record
+      // Create Content record with GENERATED status
       const content = await tx.content.create({
         data: {
           workspaceId: workspace.id,
@@ -71,7 +73,7 @@ export class ContentService {
           contentType: dto.contentType,
           platform: dto.platform,
           tone: dto.tone,
-          status: ContentStatus.DRAFT,
+          status: ContentStatus.GENERATED,
           generationMetadata: {
             provider: aiResult.provider,
             model: aiResult.model,
@@ -171,6 +173,7 @@ export class ContentService {
         data: {
           body: aiResult.text,
           tone,
+          status: ContentStatus.GENERATED,
           generationMetadata: {
             ...currentMeta,
             provider: aiResult.provider,
@@ -201,6 +204,10 @@ export class ContentService {
   ) {
     const existing = await this.getContentById(contentId, activeOrgId);
 
+    if (dto.status && dto.status !== existing.status) {
+      ContentStatusMachine.assertValidTransition(existing.status, dto.status);
+    }
+
     return this.prisma.content.update({
       where: { id: existing.id },
       data: {
@@ -212,6 +219,28 @@ export class ContentService {
         ...(dto.platform !== undefined ? { platform: dto.platform } : {}),
         ...(dto.tone !== undefined ? { tone: dto.tone } : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+      },
+      include: {
+        workspace: true,
+        createdBy: { select: { id: true, email: true, firstName: true } },
+        generations: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  }
+
+  async changeStatus(
+    contentId: string,
+    activeOrgId: string,
+    dto: ChangeContentStatusDto,
+  ) {
+    const existing = await this.getContentById(contentId, activeOrgId);
+
+    ContentStatusMachine.assertValidTransition(existing.status, dto.status);
+
+    return this.prisma.content.update({
+      where: { id: existing.id },
+      data: {
+        status: dto.status,
       },
       include: {
         workspace: true,

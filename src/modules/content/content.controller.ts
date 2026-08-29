@@ -17,6 +17,7 @@ import { GenerateContentDto } from "./dto/generate-content.dto";
 import { CreateContentDto } from "./dto/create-content.dto";
 import { UpdateContentDto } from "./dto/update-content.dto";
 import { RegenerateContentDto } from "./dto/regenerate-content.dto";
+import { ChangeContentStatusDto } from "./dto/change-content-status.dto";
 import { TenantGuard } from "../../common/guards/tenant.guard";
 import { PermissionsGuard } from "../../common/guards/permissions.guard";
 import { RequirePermissions } from "../../common/decorators/permissions.decorator";
@@ -67,6 +68,16 @@ export class ContentController {
     @Body() dto: CreateContentDto,
   ) {
     return this.contentService.createContent(req.user.id, organizationId, dto);
+  }
+
+  @Patch(":id/status")
+  @RequirePermissions(Permission.CONTENT_UPDATE)
+  async changeStatus(
+    @Param("id") id: string,
+    @ActiveOrgId() organizationId: string,
+    @Body() dto: ChangeContentStatusDto,
+  ) {
+    return this.contentService.changeStatus(id, organizationId, dto);
   }
 
   @Patch(":id")
