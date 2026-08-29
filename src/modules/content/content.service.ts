@@ -8,6 +8,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { AiEngineService } from "../ai-engine/ai-engine.service";
 import { GenerateContentDto } from "./dto/generate-content.dto";
 import { CreateContentDto } from "./dto/create-content.dto";
+import { UpdateContentDto } from "./dto/update-content.dto";
+import { RegenerateContentDto } from "./dto/regenerate-content.dto";
 
 @Injectable()
 export class ContentService {
@@ -74,6 +76,7 @@ export class ContentService {
             provider: aiResult.provider,
             model: aiResult.model,
             tokensUsed: aiResult.tokensUsed,
+            generationCount: 1,
           },
         },
       });
@@ -98,6 +101,123 @@ export class ContentService {
         content,
         generation,
       };
+    });
+  }
+
+  async regenerateContent(
+    contentId: string,
+    userId: string,
+    activeOrgId: string,
+    dto: RegenerateContentDto,
+  ) {
+    const existingContent = await this.getContentById(contentId, activeOrgId);
+
+    const tone = dto.tone || existingContent.tone || "Professional";
+
+    const promptParts = [
+      `Topic: ${existingContent.title}`,
+      `Platform: ${existingContent.platform}`,
+      `Format: ${existingContent.contentType}`,
+      `Tone: ${tone}`,
+    ];
+
+    if (dto.instructions) {
+      promptParts.push(
+        `Modified Instructions for Regeneration: ${dto.instructions}`,
+      );
+    } else if (dto.prompt) {
+      promptParts.push(`Additional Context: ${dto.prompt}`);
+    }
+
+    const fullPrompt = promptParts.join("\n");
+    const systemPrompt = `You are a social media copywriter revising and regenerating ${existingContent.platform} ${existingContent.contentType} content in a ${tone} tone.`;
+
+    const aiResult = await this.aiEngineService.generateContent({
+      prompt: fullPrompt,
+      systemPrompt,
+      platform: existingContent.platform,
+      tone,
+    });
+
+    const mappedProvider = this.mapProviderEnum(aiResult.provider);
+
+    return this.prisma.$transaction(async (tx) => {
+      // Append new generation to ContentGeneration history log
+      const generation = await tx.contentGeneration.create({
+        data: {
+          workspaceId: existingContent.workspaceId,
+          createdById: userId,
+          contentId: existingContent.id,
+          prompt: fullPrompt,
+          systemPrompt,
+          provider: mappedProvider,
+          model: aiResult.model,
+          totalTokens: aiResult.tokensUsed || 0,
+          rawResponse:
+            (aiResult.rawResponse as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        },
+      });
+
+      // Update active Content draft with new body and generation metadata
+      const currentMeta =
+        (existingContent.generationMetadata as Record<string, unknown>) || {};
+      const currentCount =
+        typeof currentMeta["generationCount"] === "number"
+          ? currentMeta["generationCount"]
+          : 1;
+
+      const content = await tx.content.update({
+        where: { id: existingContent.id },
+        data: {
+          body: aiResult.text,
+          tone,
+          generationMetadata: {
+            ...currentMeta,
+            provider: aiResult.provider,
+            model: aiResult.model,
+            tokensUsed: aiResult.tokensUsed,
+            lastRegeneratedAt: new Date().toISOString(),
+            generationCount: currentCount + 1,
+          },
+        },
+        include: {
+          workspace: true,
+          createdBy: { select: { id: true, email: true, firstName: true } },
+          generations: { orderBy: { createdAt: "desc" } },
+        },
+      });
+
+      return {
+        content,
+        generation,
+      };
+    });
+  }
+
+  async updateContent(
+    contentId: string,
+    activeOrgId: string,
+    dto: UpdateContentDto,
+  ) {
+    const existing = await this.getContentById(contentId, activeOrgId);
+
+    return this.prisma.content.update({
+      where: { id: existing.id },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title } : {}),
+        ...(dto.body !== undefined ? { body: dto.body } : {}),
+        ...(dto.contentType !== undefined
+          ? { contentType: dto.contentType }
+          : {}),
+        ...(dto.platform !== undefined ? { platform: dto.platform } : {}),
+        ...(dto.tone !== undefined ? { tone: dto.tone } : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+      },
+      include: {
+        workspace: true,
+        createdBy: { select: { id: true, email: true, firstName: true } },
+        generations: { orderBy: { createdAt: "desc" } },
+      },
     });
   }
 
@@ -163,7 +283,9 @@ export class ContentService {
             lastName: true,
           },
         },
-        generations: true,
+        generations: {
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
