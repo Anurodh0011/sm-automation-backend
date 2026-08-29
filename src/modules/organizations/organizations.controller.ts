@@ -12,6 +12,9 @@ import { CreateOrganizationDto } from "./dto/create-organization.dto";
 import { AddMemberDto } from "./dto/add-member.dto";
 import type { RequestWithUser } from "../auth/auth.controller";
 import { TenantGuard } from "../../common/guards/tenant.guard";
+import { PermissionsGuard } from "../../common/guards/permissions.guard";
+import { RequirePermissions } from "../../common/decorators/permissions.decorator";
+import { Permission } from "../../common/enums/permission.enum";
 
 @Controller("organizations")
 export class OrganizationsController {
@@ -31,7 +34,8 @@ export class OrganizationsController {
   }
 
   @Get(":id")
-  @UseGuards(TenantGuard)
+  @UseGuards(TenantGuard, PermissionsGuard)
+  @RequirePermissions(Permission.ORG_READ)
   async getOrganizationById(
     @Param("id") id: string,
     @Request() req: RequestWithUser,
@@ -40,7 +44,8 @@ export class OrganizationsController {
   }
 
   @Post(":id/members")
-  @UseGuards(TenantGuard)
+  @UseGuards(TenantGuard, PermissionsGuard)
+  @RequirePermissions(Permission.ORG_MEMBERS_MANAGE)
   async addMember(
     @Param("id") id: string,
     @Request() req: RequestWithUser,
