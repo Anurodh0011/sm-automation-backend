@@ -3,14 +3,13 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  MaxLength,
+  IsUUID,
 } from "class-validator";
-import { ContentType, TargetPlatform } from "@prisma/client";
+import { ContentStatus, ContentType, TargetPlatform } from "@prisma/client";
 
 export class CreateContentDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(150)
   title!: string;
 
   @IsString()
@@ -28,4 +27,12 @@ export class CreateContentDto {
   @IsOptional()
   @IsString()
   tone?: string;
+
+  @IsOptional()
+  @IsEnum(ContentStatus)
+  status?: ContentStatus = ContentStatus.DRAFT;
+
+  @IsOptional()
+  @IsUUID()
+  workspaceId?: string;
 }
