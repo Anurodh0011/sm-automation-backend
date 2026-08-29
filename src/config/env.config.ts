@@ -16,6 +16,9 @@ export const envSchema = z.object({
   THROTTLE_TTL: z.coerce.number().default(60),
   THROTTLE_LIMIT: z.coerce.number().default(100),
   AUTH_THROTTLE_LIMIT: z.coerce.number().default(5),
+  AI_PROVIDER: z.enum(["mock", "openai", "gemini", "claude"]).default("mock"),
+  AI_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().default("gpt-4o-mini"),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
